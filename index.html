@@ -8,27 +8,98 @@
     <style>
         body { font-family: Arial, sans-serif; text-align: center; margin-top: 20px; background-color: #f4f4f9; }
         .container { max-width: 500px; margin: auto; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        button { padding: 15px 20px; margin: 10px; cursor: pointer; font-size: 16px; border-radius: 5px; border: none; background: #007bff; color: white; width: 100%;}
+        button { padding: 15px 20px; margin: 10px 0; cursor: pointer; font-size: 16px; border-radius: 5px; border: none; background: #007bff; color: white; width: 100%;}
+        input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
         #reader { width: 100%; margin-top: 20px; }
-        #message { font-weight: bold; font-size: 1.2em; margin-top: 20px; padding: 10px;}
+        #message, #login-message { font-weight: bold; font-size: 1.2em; margin-top: 20px; padding: 10px;}
         .success { color: #155724; background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px;}
         .error { color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 5px;}
+        
+        /* Toggle views */
+        #scanner-section, #login-section { display: none; }
+        .active { display: block !important; }
     </style>
 </head>
 <body>
 
     <div class="container">
         <h2>Gate Check-In</h2>
-        <div id="reader"></div>
-        <div id="message"></div>
-        <button id="scanBtn" onclick="startScanner()">Start Camera</button>
+
+        <div id="login-section" class="active">
+            <h3>Guard Login</h3>
+            <input type="text" id="username" placeholder="Username (e.g. Gate1)">
+            <input type="password" id="pin" placeholder="PIN">
+            <button onclick="login()">Login</button>
+            <div id="login-message"></div>
+        </div>
+
+        <div id="scanner-section">
+            <button onclick="logout()" style="background: #dc3545; padding: 5px; width: auto; float: right; font-size: 12px;">Logout</button>
+            <div style="clear: both;"></div>
+            <div id="reader"></div>
+            <div id="message"></div>
+            <button id="scanBtn" onclick="startScanner()">Start Camera</button>
+        </div>
     </div>
 
     <script>
         // PASTE YOUR GOOGLE SCRIPT URL HERE
-        const GOOGLE_API_URL = 'https://script.google.com/macros/s/AKfycbyCYq1cJiVS_fQ7jyz32oA-sAwIQCkAO96E_7SDFe_w6ZDz2sfQPlMmNTJhasCXVpgWWQ/exec';
+        const GOOGLE_API_URL = 'https://script.google.com/macros/s/AKfycbzQ72gOw54Ira8gQcoDvARbN-Bkuzqd73bqbU0acESSmTKO6JPnDAKY0Z6nXaHESqu6Qw/exec';
         let html5QrcodeScanner;
 
+        // Check if already logged in when page loads
+        window.onload = () => {
+            if (localStorage.getItem('guardLoggedIn') === 'true') {
+                showScanner();
+            }
+        };
+
+        // --- LOGIN LOGIC ---
+        async function login() {
+            const username = document.getElementById('username').value;
+            const pin = document.getElementById('pin').value;
+            const msgEl = document.getElementById('login-message');
+
+            if (!username || !pin) {
+                msgEl.innerText = "Please enter both Username and PIN.";
+                msgEl.className = "error";
+                return;
+            }
+
+            msgEl.innerText = "Verifying...";
+            msgEl.className = "";
+
+            try {
+                const response = await fetch(`${GOOGLE_API_URL}?action=login&username=${encodeURIComponent(username)}&pin=${encodeURIComponent(pin)}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    localStorage.setItem('guardLoggedIn', 'true');
+                    showScanner();
+                } else {
+                    msgEl.innerText = result.message;
+                    msgEl.className = "error";
+                }
+            } catch (error) {
+                msgEl.innerText = "Network error. Try again.";
+                msgEl.className = "error";
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('guardLoggedIn');
+            stopScanner();
+            document.getElementById('scanner-section').classList.remove('active');
+            document.getElementById('login-section').classList.add('active');
+            document.getElementById('login-message').innerText = "";
+        }
+
+        function showScanner() {
+            document.getElementById('login-section').classList.remove('active');
+            document.getElementById('scanner-section').classList.add('active');
+        }
+
+        // --- SCANNER LOGIC ---
         function startScanner() {
             document.getElementById('message').innerText = "";
             document.getElementById('message').className = "";
@@ -37,15 +108,15 @@
             html5QrcodeScanner = new Html5Qrcode("reader");
             
             html5QrcodeScanner.start(
-                { facingMode: "environment" }, // Back camera
+                { facingMode: "environment" }, 
                 { fps: 10, qrbox: { width: 250, height: 250 } },
                 async (decodedText) => {
-                    // QR Scanned Successfully
                     stopScanner(); 
-                    document.getElementById('message').innerText = "Verifying...";
+                    document.getElementById('message').innerText = "Verifying ID...";
+                    document.getElementById('message').className = "";
                     
                     try {
-                        const response = await fetch(`${GOOGLE_API_URL}?id=${encodeURIComponent(decodedText)}`);
+                        const response = await fetch(`${GOOGLE_API_URL}?action=scan&id=${encodeURIComponent(decodedText)}`);
                         const result = await response.json();
                         
                         const msgEl = document.getElementById('message');
@@ -57,12 +128,11 @@
                         document.getElementById('message').className = "error";
                     }
                     
-                    // Show button to scan next person
                     document.getElementById('scanBtn').innerText = "Scan Next Person";
                     document.getElementById('scanBtn').style.display = "block";
                 },
-                (errorMessage) => { /* Ignore background scan errors */ }
-            ).catch(err => alert("Camera permission denied or not found."));
+                (errorMessage) => {}
+            ).catch(err => alert("Camera permission denied."));
         }
 
         function stopScanner() {
