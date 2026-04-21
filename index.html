@@ -44,11 +44,20 @@
         }
         button:hover, button:active {
             background-color: rgb(200, 30, 70); 
-            transform: scale(0.98); /* Adds a subtle "press" effect */
+            transform: scale(0.98); 
+        }
+
+        .outline-btn {
+            background-color: transparent;
+            border: 2px solid rgb(231, 43, 85);
+            color: rgb(231, 43, 85);
+        }
+        .outline-btn:hover, .outline-btn:active {
+            background-color: rgba(231, 43, 85, 0.1);
         }
         
         /* --- INPUT FIELDS --- */
-        input { 
+        input:not([type="file"]) { 
             width: 90%; 
             padding: 10px; 
             margin: 10px 0; 
@@ -63,14 +72,12 @@
             color: #aaaaaa;
         }
         
-        /* Changes background when clicked/focused */
-        input:focus {
+        input:not([type="file"]):focus {
             background-color: rgb(45, 25, 75);
             box-shadow: 0 0 8px rgba(231, 43, 85, 0.5);
         }
 
-        /* Changes background after text is typed and it's no longer empty */
-        input:not(:placeholder-shown) {
+        input:not(:placeholder-shown):not([type="file"]) {
             background-color: rgb(45, 25, 75); 
         }
 
@@ -96,7 +103,7 @@
         
         <img src="logo.png" alt="Event Logo" class="event-logo">
         
-        <h2>সাকেপ কাউকে QR ছাড়া ঢুকতে দেয় না</h2>
+        <h2>সাকেপ কাউকে QR ছাড়া ঢুকতে দেয় না</h2>
 
         <div id="login-section" class="active">
             <h3>Gate Slave Login</h3>
@@ -109,14 +116,22 @@
         <div id="scanner-section">
             <button onclick="logout()" style="background: transparent; border: 1px solid rgb(231, 43, 85); color: rgb(231, 43, 85); padding: 5px 15px; width: auto; float: right; font-size: 14px;">Logout</button>
             <div style="clear: both;"></div>
+            
             <div id="reader"></div>
             <div id="message"></div>
+            
             <button id="scanBtn" onclick="startScanner()">Start Camera</button>
+            
+            <p style="margin: 10px 0; color: #aaaaaa; font-size: 14px;">— OR —</p>
+            
+            <input type="file" id="qr-upload" accept="image/*" style="display: none;" onchange="handleFileUpload(event)">
+            <button class="outline-btn" onclick="document.getElementById('qr-upload').click()">Upload QR Image</button>
+
         </div>
     </div>
 
     <script>
-        // PASTE YOUR GOOGLE SCRIPT URL HERE
+        // YOUR LIVE GOOGLE SCRIPT URL
         const GOOGLE_API_URL = 'https://script.google.com/macros/s/AKfycbyCYq1cJiVS_fQ7jyz32oA-sAwIQCkAO96E_7SDFe_w6ZDz2sfQPlMmNTJhasCXVpgWWQ/exec';
         let html5QrcodeScanner;
 
@@ -189,6 +204,29 @@
             }, 300);
         }
 
+        // --- CORE SCAN PROCESSING LOGIC ---
+        async function processScan(decodedText) {
+            document.getElementById('message').innerText = "Verifying ID...";
+            document.getElementById('message').className = "";
+            
+            try {
+                const response = await fetch(`${GOOGLE_API_URL}?action=scan&id=${encodeURIComponent(decodedText)}`);
+                const result = await response.json();
+                
+                const msgEl = document.getElementById('message');
+                msgEl.innerText = result.message;
+                msgEl.className = result.success ? "success" : "error";
+                
+            } catch (error) {
+                document.getElementById('message').innerText = "Network error. Try again.";
+                document.getElementById('message').className = "error";
+            }
+            
+            document.getElementById('scanBtn').innerText = "Scan Next Person";
+            document.getElementById('scanBtn').style.display = "block";
+        }
+
+        // --- CAMERA SCANNER ---
         function startScanner() {
             document.getElementById('message').innerText = "";
             document.getElementById('message').className = "";
@@ -201,24 +239,7 @@
                 { fps: 10, qrbox: { width: 250, height: 250 } },
                 async (decodedText) => {
                     stopScanner(); 
-                    document.getElementById('message').innerText = "Verifying ID...";
-                    document.getElementById('message').className = "";
-                    
-                    try {
-                        const response = await fetch(`${GOOGLE_API_URL}?action=scan&id=${encodeURIComponent(decodedText)}`);
-                        const result = await response.json();
-                        
-                        const msgEl = document.getElementById('message');
-                        msgEl.innerText = result.message;
-                        msgEl.className = result.success ? "success" : "error";
-                        
-                    } catch (error) {
-                        document.getElementById('message').innerText = "Network error. Try again.";
-                        document.getElementById('message').className = "error";
-                    }
-                    
-                    document.getElementById('scanBtn').innerText = "Scan Next Person";
-                    document.getElementById('scanBtn').style.display = "block";
+                    await processScan(decodedText);
                 },
                 (errorMessage) => {}
             ).catch(err => alert("Camera permission denied."));
@@ -228,6 +249,30 @@
             if (html5QrcodeScanner) {
                 html5QrcodeScanner.stop().catch(err => console.error(err));
             }
+        }
+
+        // --- FILE UPLOAD SCANNER ---
+        async function handleFileUpload(event) {
+            if (event.target.files.length == 0) return;
+            
+            const file = event.target.files[0];
+            const tempScanner = new Html5Qrcode("reader");
+            
+            document.getElementById('message').innerText = "Scanning image...";
+            document.getElementById('message').className = "";
+            stopScanner(); // Stop the live camera if it happens to be running
+            document.getElementById('scanBtn').style.display = "block";
+            
+            try {
+                const decodedText = await tempScanner.scanFile(file, true);
+                await processScan(decodedText);
+            } catch (err) {
+                document.getElementById('message').innerText = "No QR code found in the image.";
+                document.getElementById('message').className = "error";
+            }
+            
+            // Reset the input field so the same file can be selected again if needed
+            event.target.value = '';
         }
     </script>
 </body>
