@@ -26,7 +26,6 @@
         #scanner-section, #login-section { display: none; opacity: 0; }
         .active { display: block !important; opacity: 1 !important; }
         
-        /* --- UPDATED SEARCH BOX --- */
         .search-box { display: flex; gap: 8px; margin-bottom: 15px; }
         .search-box select { width: 35%; margin: 0; padding: 12px; cursor: pointer; }
         .search-box input { width: 65%; margin: 0; }
@@ -37,7 +36,7 @@
         @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; padding: 15px; }
-        .modal-content { background: rgb(25, 15, 45); padding: 25px; border-radius: 12px; width: 100%; max-width: 400px; text-align: left; border: 1px solid; position: relative; }
+        .modal-content { background: rgb(25, 15, 45); padding: 25px; border-radius: 12px; width: 100%; max-width: 400px; text-align: left; border: 1px solid; position: relative; max-height: 90vh; overflow-y: auto; }
         .modal-content h3 { margin-top: 0; text-align: center; font-size: 22px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
         .modal-detail { margin: 12px 0; font-size: 15px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px; color: #ddd; }
         .modal-detail strong { color: #fff; font-weight: 600; }
@@ -110,9 +109,15 @@
                 <div class="modal-detail"><strong>Name:</strong> <span id="m-name"></span></div>
                 <div class="modal-detail"><strong>ID:</strong> <span id="m-id"></span></div>
                 <div class="modal-detail"><strong>Institution:</strong> <span id="m-inst"></span></div>
+                
+                <div id="th-details" style="display: none;">
+                    <div class="modal-detail"><strong>Team Name:</strong> <span id="m-team" style="color: #ffc107;"></span></div>
+                    <div class="modal-detail"><strong>Members:</strong> <br><span id="m-members" style="font-size: 13px; color: #aaa; line-height: 1.6; display: inline-block; margin-top: 5px;"></span></div>
+                </div>
+
             </div>
             <p id="modalMsg" style="text-align: center; color: #bbb; margin-top: 15px; line-height: 1.5; font-size: 14px;"></p>
-            <button onclick="closeModal()" style="margin-top: 20px;">Close & Next</button>
+            <button onclick="closeModal()" style="margin-top: 20px;">Close & Next Scan</button>
         </div>
     </div>
 
@@ -130,9 +135,6 @@
             }
         };
 
-        // =========================================================
-        // HTML-INTEGRATED LOGIN LOGIC
-        // =========================================================
         function login() {
             const user = document.getElementById('username').value.trim();
             const pass = document.getElementById('pin').value.trim();
@@ -165,11 +167,6 @@
             setTimeout(() => { document.getElementById('scanner-section').style.opacity = 1; }, 50);
         }
 
-        // =========================================================
-        // SCANNING & DATABASE LOGIC 
-        // =========================================================
-        
-        // Notice we added a second parameter 'type' here
         async function processScan(queryText, type = 'auto') {
             queryText = queryText.trim();
             if (!queryText) return;
@@ -181,7 +178,6 @@
                 const response = await fetch(BACKEND_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    // Sending both the query and the targeted search type
                     body: JSON.stringify({ query: queryText, searchType: type }), 
                     redirect: "follow"
                 });
@@ -202,6 +198,7 @@
             const modal = document.getElementById('resultModal');
             const box = document.getElementById('modalBox');
             const detailsDiv = document.getElementById('participantDetails');
+            const thDetails = document.getElementById('th-details');
             
             box.className = "modal-content " + (result.success ? "status-success" : "status-error");
             document.getElementById('modalTitle').innerText = result.message;
@@ -217,8 +214,18 @@
                     typeSpan.style.display = "inline-block";
                     typeSpan.innerText = result.details.type.toUpperCase();
                     typeSpan.className = "badge " + (result.details.type === "Treasure Hunt" ? "badge-th" : "badge-reg");
+                    
+                    // Toggle Treasure Hunt specific UI
+                    if (result.details.type === "Treasure Hunt") {
+                        thDetails.style.display = "block";
+                        document.getElementById('m-team').innerText = result.details.teamName;
+                        document.getElementById('m-members').innerText = result.details.teamMembers;
+                    } else {
+                        thDetails.style.display = "none";
+                    }
                 } else {
                     typeSpan.style.display = "none";
+                    thDetails.style.display = "none";
                 }
                 document.getElementById('modalMsg').innerText = "";
             } else {
@@ -229,23 +236,32 @@
             modal.style.display = "flex";
         }
 
+        function closeModal() {
+            document.getElementById('resultModal').style.display = "none";
+        }
+
         function handleManualSearch() {
             const query = document.getElementById('manualSearch').value;
             const searchType = document.getElementById('searchType').value;
-            
-            // Pass the dropdown selection to the backend
             if (query) processScan(query, searchType);
         }
 
         function startScanner() {
             document.getElementById('scanBtn').style.display = "none";
+            
+            // Clean up any existing instances first
+            if (html5QrcodeScanner) {
+                html5QrcodeScanner.clear().catch(e => console.log(e));
+            }
+
             html5QrcodeScanner = new Html5Qrcode("reader");
             html5QrcodeScanner.start(
                 { facingMode: "environment" }, 
                 { fps: 10, qrbox: { width: 250, height: 250 } },
                 async (decodedText) => {
-                    html5QrcodeScanner.stop();
-                    // Camera defaults to "auto" to let the backend figure it out
+                    // FIX: Completely destroy the camera instance to unfreeze the UI
+                    await html5QrcodeScanner.clear();
+                    document.getElementById('scanBtn').style.display = "block";
                     await processScan(decodedText, 'auto');
                 },
                 (errorMessage) => {}
@@ -262,7 +278,6 @@
             
             try {
                 const decodedText = await tempScanner.scanFile(file, true);
-                // Uploaded QR defaults to "auto"
                 await processScan(decodedText, 'auto');
             } catch (err) {
                 showModal({ success: false, message: "No QR code detected in the image." });
