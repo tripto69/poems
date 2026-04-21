@@ -4,85 +4,87 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Guard Check-In Scanner</title>
+    <title>NMF 2026 Gate Scanner</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        /* --- GLOBAL TRANSITION --- */
+        /* --- GLOBAL TRANSITION & THEME --- */
         * { transition: all 0.3s ease; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; margin: 0; padding: 20px; background-color: rgb(14, 5, 29); color: #ffffff; }
+        .container { max-width: 500px; margin: auto; padding: 20px; background: rgba(255, 255, 255, 0.05); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); }
         
-        /* --- THEME --- */
-        body { font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 20px; background-color: rgb(14, 5, 29); color: #ffffff; }
-        .container { max-width: 500px; margin: auto; padding: 20px; background: rgba(255, 255, 255, 0.05); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1); }
-        
-        /* --- BUTTONS --- */
-        button { padding: 15px 20px; margin: 10px 0; cursor: pointer; font-size: 16px; font-weight: bold; border-radius: 5px; border: none; background-color: rgb(231, 43, 85); color: white; width: 100%; }
+        /* --- BUTTONS & INPUTS --- */
+        button { padding: 15px 20px; margin: 10px 0; cursor: pointer; font-size: 16px; font-weight: bold; border-radius: 8px; border: none; background-color: rgb(231, 43, 85); color: white; width: 100%; }
         button:hover, button:active { background-color: rgb(200, 30, 70); transform: scale(0.98); }
         .outline-btn { background-color: transparent; border: 2px solid rgb(231, 43, 85); color: rgb(231, 43, 85); }
-        .outline-btn:hover, .outline-btn:active { background-color: rgba(231, 43, 85, 0.1); }
         
-        /* --- INPUT FIELDS --- */
-        input:not([type="file"]) { width: 100%; padding: 12px; margin: 10px 0; background-color: rgb(25, 15, 45); color: white; border: 1px solid rgb(231, 43, 85); border-radius: 5px; font-size: 16px; outline: none; }
-        input::placeholder { color: #aaaaaa; }
-        input:not([type="file"]):focus, input:not(:placeholder-shown):not([type="file"]) { background-color: rgb(45, 25, 75); box-shadow: 0 0 8px rgba(231, 43, 85, 0.5); }
-
-        .event-logo { max-width: 150px; margin-bottom: 10px; }
+        input { width: 100%; padding: 14px; margin: 10px 0; background-color: rgb(25, 15, 45); color: white; border: 1px solid rgb(231, 43, 85); border-radius: 8px; font-size: 16px; outline: none; }
+        input::placeholder { color: #888; }
+        input:focus { box-shadow: 0 0 10px rgba(231, 43, 85, 0.5); }
         
-        /* --- SCANNER & MESSAGES --- */
-        #reader { width: 100%; margin-top: 20px; background-color: #ffffff; border-radius: 5px; overflow: hidden; }
-        #login-message { font-weight: bold; font-size: 1.2em; margin-top: 10px; padding: 10px; border-radius: 5px;}
-        .error { color: #dc3545; }
-        
-        /* Toggle views */
+        /* --- SECTIONS --- */
         #scanner-section, #login-section { display: none; opacity: 0; }
         .active { display: block !important; opacity: 1 !important; }
-
-        /* --- POPUP MODAL STYLES --- */
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; }
-        .modal-content { background: rgb(25, 15, 45); padding: 25px; border-radius: 10px; width: 90%; max-width: 400px; text-align: left; border: 2px solid; position: relative; }
-        .modal-content h3 { margin-top: 0; text-align: center; font-size: 24px; }
-        .modal-detail { margin: 10px 0; font-size: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; }
-        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-left: 10px; }
-        .badge-th { background: #ffc107; color: #000; }
-        .badge-reg { background: #0dcaf0; color: #000; }
         
-        .status-success { border-color: #28a745; box-shadow: 0 0 20px rgba(40, 167, 69, 0.4); }
-        .status-success h3 { color: #28a745; }
-        .status-error { border-color: #dc3545; box-shadow: 0 0 20px rgba(220, 53, 69, 0.4); }
-        .status-error h3 { color: #dc3545; }
-
-        .search-box { display: flex; gap: 10px; }
+        /* --- SCANNER ELEMENTS --- */
+        .search-box { display: flex; gap: 10px; margin-bottom: 15px; }
         .search-box input { margin: 0; }
         .search-box button { width: auto; margin: 0; padding: 12px 20px; }
+        #reader { width: 100%; margin-top: 10px; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 2px solid rgb(231, 43, 85); }
+        #loader { display: none; color: #0dcaf0; margin: 15px 0; font-weight: bold; font-size: 18px; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
+
+        /* --- MODAL STYLES --- */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; padding: 15px; }
+        .modal-content { background: rgb(25, 15, 45); padding: 25px; border-radius: 12px; width: 100%; max-width: 400px; text-align: left; border: 3px solid; position: relative; }
+        .modal-content h3 { margin-top: 0; text-align: center; font-size: 26px; text-transform: uppercase; letter-spacing: 1px; }
+        .modal-detail { margin: 12px 0; font-size: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; color: #ddd; }
+        .modal-detail strong { color: #fff; }
+        
+        /* --- BADGES & STATUS --- */
+        .badge { display: inline-block; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: bold; float: right; letter-spacing: 0.5px; }
+        .badge-th { background: #ffc107; color: #000; box-shadow: 0 0 10px rgba(255, 193, 7, 0.4); }
+        .badge-reg { background: #0dcaf0; color: #000; box-shadow: 0 0 10px rgba(13, 202, 240, 0.4); }
+        
+        .status-success { border-color: #28a745; box-shadow: 0 0 30px rgba(40, 167, 69, 0.3); }
+        .status-success h3 { color: #28a745; }
+        .status-error { border-color: #dc3545; box-shadow: 0 0 30px rgba(220, 53, 69, 0.3); }
+        .status-error h3 { color: #dc3545; }
+
+        .header-bar { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 20px; }
+        .header-bar h2 { margin: 0; font-size: 20px; }
+        .logout-btn { background: transparent; border: 1px solid rgb(231, 43, 85); color: rgb(231, 43, 85); padding: 5px 12px; width: auto; font-size: 14px; margin: 0; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <img src="logo.png" alt="Event Logo" class="event-logo">
-        <h2>সাকেপ কাউকে QR ছাড়া ঢুকতে দেয় না</h2>
-
         <div id="login-section" class="active">
-            <h3>Gate Slave Login</h3>
-            <input type="text" id="username" placeholder="Username (e.g. Gate1)">
-            <input type="password" id="pin" placeholder="PIN">
-            <button onclick="login()">Login</button>
-            <div id="login-message"></div>
+            <h2 style="margin-bottom: 5px;">National Math Festival</h2>
+            <p style="color: #aaa; margin-top: 0; margin-bottom: 20px;">Gate Guard Portal</p>
+            
+            <input type="text" id="username" placeholder="Username">
+            <input type="password" id="pin" placeholder="Password">
+            <button onclick="login()">Access System</button>
+            <div id="login-message" style="margin-top: 15px; font-weight: bold;"></div>
         </div>
 
         <div id="scanner-section">
-            <button onclick="logout()" style="background: transparent; border: 1px solid rgb(231, 43, 85); color: rgb(231, 43, 85); padding: 5px 15px; width: auto; float: right; font-size: 14px;">Logout</button>
-            <div style="clear: both;"></div>
+            <div class="header-bar">
+                <h2>Live Scanner</h2>
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
             
             <div class="search-box">
-                <input type="text" id="manualSearch" placeholder="Search ID or Phone">
+                <input type="text" id="manualSearch" placeholder="Enter ID or Phone...">
                 <button onclick="handleManualSearch()">Search</button>
             </div>
 
+            <div id="loader">Communicating with Database...</div>
+
             <div id="reader"></div>
+            <button id="scanBtn" onclick="startScanner()" style="margin-top: 15px;">Open Camera</button>
             
-            <button id="scanBtn" onclick="startScanner()">Start Camera</button>
-            
-            <p style="margin: 10px 0; color: #aaaaaa; font-size: 14px;">— OR —</p>
+            <p style="margin: 15px 0; color: #888; font-size: 14px;">— OR —</p>
             <input type="file" id="qr-upload" accept="image/*" style="display: none;" onchange="handleFileUpload(event)">
             <button class="outline-btn" onclick="document.getElementById('qr-upload').click()">Upload QR Image</button>
         </div>
@@ -92,129 +94,98 @@
         <div class="modal-content" id="modalBox">
             <h3 id="modalTitle">STATUS</h3>
             <div id="participantDetails" style="display: none;">
+                <div class="modal-detail" style="border:none; padding-bottom:0; margin-top: 0;">
+                    <span id="m-type" class="badge"></span>
+                    <div style="clear:both;"></div>
+                </div>
                 <div class="modal-detail"><strong>Name:</strong> <span id="m-name"></span></div>
                 <div class="modal-detail"><strong>ID:</strong> <span id="m-id"></span></div>
-                <div class="modal-detail"><strong>Inst:</strong> <span id="m-inst"></span></div>
-                <div class="modal-detail"><strong>Phone:</strong> <span id="m-phone"></span></div>
-                <div class="modal-detail"><strong>Payment:</strong> <span id="m-pay"></span></div>
-                <div class="modal-detail">
-                    <strong>Event:</strong> 
-                    <span id="m-type" class="badge"></span>
-                </div>
+                <div class="modal-detail"><strong>Institution:</strong> <span id="m-inst"></span></div>
             </div>
-            <p id="modalMsg" style="text-align: center; color: #aaa;"></p>
-            <button onclick="closeModal()">Close & Scan Next</button>
+            <p id="modalMsg" style="text-align: center; color: #ccc; margin-top: 15px; line-height: 1.4;"></p>
+            <button onclick="closeModal()" style="margin-top: 20px;">Close & Next</button>
         </div>
     </div>
 
     <script>
-        // ==========================================
-        // BACKEND CONFIGURATION
-        // ==========================================
-        // Replace this with your actual Render URL (do NOT include a slash at the end)
-        const BACKEND_URL = "https://YOUR_NEW_RENDER_URL.onrender.com"; 
-        // ==========================================
+        // =========================================================
+        // 1. PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL HERE
+        // =========================================================
+        const BACKEND_URL = "https://script.google.com/macros/s/AKfycbwOKwom1u44BA9HoQ5xtLtm2Iu9_CMxUZgWa-Dxp7POjJcCN8sK37yTcIlyVosildl0sA/exec"; 
 
         let html5QrcodeScanner;
 
-        // --- LOGIN LOGIC ---
+        // =========================================================
+        // 2. GUARD LOGIN LOGIC (Edit these credentials)
+        // =========================================================
         window.onload = () => {
             if (localStorage.getItem('guardLoggedIn') === 'true') {
                 showScanner();
             }
         };
 
-        async function login() {
-            const username = document.getElementById('username').value;
-            const pin = document.getElementById('pin').value;
+        function login() {
+            const user = document.getElementById('username').value.trim();
+            const pass = document.getElementById('pin').value.trim();
             const msgEl = document.getElementById('login-message');
 
-            if (!username || !pin) {
-                msgEl.innerText = "Please enter both Username and PIN.";
-                msgEl.className = "error";
-                return;
-            }
+            // Set your guard usernames and passwords here
+            const validGuards = {
+                "admin": "tripto12608061",
+                "volunteer1": "nmf_gv_001",
+                "volunteer2": "nmf_gv_002"
+            };
 
-            msgEl.innerText = "Verifying...";
-            msgEl.className = "";
-
-            try {
-                const response = await fetch(`${BACKEND_URL}/api/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, pin })
-                });
-                
-                const result = await response.json();
-
-                if (result.success) {
-                    localStorage.setItem('guardLoggedIn', 'true');
-                    showScanner();
-                    msgEl.innerText = "";
-                } else {
-                    msgEl.innerText = result.message || "Invalid Username or PIN.";
-                    msgEl.className = "error";
-                }
-            } catch (error) {
-                msgEl.innerText = "Network error. Make sure the server is running.";
-                msgEl.className = "error";
+            if (validGuards[user] && validGuards[user] === pass) {
+                localStorage.setItem('guardLoggedIn', 'true');
+                showScanner();
+            } else {
+                msgEl.innerText = "Access Denied: Invalid Credentials.";
+                msgEl.style.color = "#dc3545";
             }
         }
 
         function logout() {
             localStorage.removeItem('guardLoggedIn');
-            stopScanner();
-            
-            const scannerSec = document.getElementById('scanner-section');
-            const loginSec = document.getElementById('login-section');
-            
-            scannerSec.style.opacity = 0;
-            setTimeout(() => {
-                scannerSec.classList.remove('active');
-                loginSec.classList.add('active');
-                setTimeout(() => loginSec.style.opacity = 1, 50);
-            }, 300);
-
-            document.getElementById('username').value = "";
-            document.getElementById('pin').value = "";
+            location.reload();
         }
 
         function showScanner() {
-            const scannerSec = document.getElementById('scanner-section');
-            const loginSec = document.getElementById('login-section');
-            
-            loginSec.style.opacity = 0;
-            setTimeout(() => {
-                loginSec.classList.remove('active');
-                scannerSec.classList.add('active');
-                setTimeout(() => scannerSec.style.opacity = 1, 50);
-            }, 300);
+            document.getElementById('login-section').classList.remove('active');
+            document.getElementById('scanner-section').classList.add('active');
+            setTimeout(() => { document.getElementById('scanner-section').style.opacity = 1; }, 50);
         }
 
-        // --- CORE SCAN PROCESSING LOGIC ---
+        // =========================================================
+        // 3. SCANNING & DATABASE LOGIC
+        // =========================================================
         async function processScan(queryText) {
-            document.getElementById('scanBtn').style.display = "block";
             queryText = queryText.trim();
+            if (!queryText) return;
+
+            document.getElementById('scanBtn').style.display = "block";
+            document.getElementById('loader').style.display = "block";
             
             try {
-                const response = await fetch(`${BACKEND_URL}/api/scan`, {
+                const response = await fetch(BACKEND_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: queryText })
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ query: queryText }),
+                    redirect: "follow"
                 });
                 
                 const result = await response.json();
+                document.getElementById('loader').style.display = "none";
                 showModal(result);
 
             } catch (error) {
-                console.error(error);
-                showModal({ success: false, message: "Network error connecting to server.", details: null });
+                document.getElementById('loader').style.display = "none";
+                showModal({ success: false, message: "Network Error. Check WiFi/Data." });
             }
             
             document.getElementById('manualSearch').value = "";
         }
 
-        // --- POPUP MODAL LOGIC ---
         function showModal(result) {
             const modal = document.getElementById('resultModal');
             const box = document.getElementById('modalBox');
@@ -225,20 +196,22 @@
 
             if (result.details) {
                 detailsDiv.style.display = "block";
-                document.getElementById('m-name').innerText = result.details.name;
-                document.getElementById('m-id').innerText = result.details.id;
-                document.getElementById('m-inst').innerText = result.details.institution;
-                document.getElementById('m-phone').innerText = result.details.phone;
-                document.getElementById('m-pay').innerText = result.details.payment.toUpperCase();
+                document.getElementById('m-name').innerText = result.details.name || "N/A";
+                document.getElementById('m-id').innerText = result.details.id || "N/A";
+                document.getElementById('m-inst').innerText = result.details.institution || "N/A";
                 
                 const typeSpan = document.getElementById('m-type');
-                typeSpan.innerText = result.details.type;
-                typeSpan.className = "badge " + (result.details.type === "Treasure Hunt" ? "badge-th" : "badge-reg");
-                
+                if (result.details.type) {
+                    typeSpan.style.display = "inline-block";
+                    typeSpan.innerText = result.details.type.toUpperCase();
+                    typeSpan.className = "badge " + (result.details.type === "Treasure Hunt" ? "badge-th" : "badge-reg");
+                } else {
+                    typeSpan.style.display = "none";
+                }
                 document.getElementById('modalMsg').innerText = "";
             } else {
                 detailsDiv.style.display = "none";
-                document.getElementById('modalMsg').innerText = "Make sure the ID or phone number is correct.";
+                document.getElementById('modalMsg').innerText = "Double check the ID or Phone Number. Participant not found in the database.";
             }
 
             modal.style.display = "flex";
@@ -250,46 +223,38 @@
 
         function handleManualSearch() {
             const query = document.getElementById('manualSearch').value;
-            if(!query) return alert("Enter an ID or Phone number!");
             processScan(query);
         }
 
-        // --- CAMERA SCANNER ---
         function startScanner() {
             document.getElementById('scanBtn').style.display = "none";
             html5QrcodeScanner = new Html5Qrcode("reader");
-            
             html5QrcodeScanner.start(
                 { facingMode: "environment" }, 
                 { fps: 10, qrbox: { width: 250, height: 250 } },
                 async (decodedText) => {
-                    stopScanner(); 
+                    html5QrcodeScanner.stop();
                     await processScan(decodedText);
                 },
                 (errorMessage) => {}
-            ).catch(err => alert("Camera permission denied."));
+            ).catch(err => {
+                alert("Camera permission denied. Please allow camera access or use manual search.");
+                document.getElementById('scanBtn').style.display = "block";
+            });
         }
 
-        function stopScanner() {
-            if (html5QrcodeScanner) {
-                html5QrcodeScanner.stop().catch(err => console.error(err));
-            }
-        }
-
-        // --- FILE UPLOAD SCANNER ---
         async function handleFileUpload(event) {
             if (event.target.files.length == 0) return;
             const file = event.target.files[0];
             const tempScanner = new Html5Qrcode("reader");
-            stopScanner(); 
             
             try {
                 const decodedText = await tempScanner.scanFile(file, true);
                 await processScan(decodedText);
             } catch (err) {
-                showModal({ success: false, message: "No QR code found in image.", details: null });
+                showModal({ success: false, message: "No QR code detected in the image." });
             }
-            event.target.value = '';
+            event.target.value = ''; // Reset file input
         }
     </script>
 </body>
