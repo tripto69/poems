@@ -3,30 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Guard Check-In Scanner</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin-top: 20px; background-color: #f4f4f9; }
-        .container { max-width: 500px; margin: auto; padding: 20px; background: white; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        button { padding: 15px 20px; margin: 10px 0; cursor: pointer; font-size: 16px; border-radius: 5px; border: none; background: #007bff; color: white; width: 100%;}
-        input { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 16px; }
-        #reader { width: 100%; margin-top: 20px; }
-        #message, #login-message { font-weight: bold; font-size: 1.2em; margin-top: 20px; padding: 10px;}
-        .success { color: #155724; background-color: #d4edda; border: 1px solid #c3e6cb; border-radius: 5px;}
-        .error { color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 5px;}
+        /* --- GLOBAL TRANSITION --- */
+        * {
+            transition: all 0.3s ease;
+        }
+
+        /* --- THEME --- */
+        body { 
+            font-family: Arial, sans-serif; 
+            text-align: center; 
+            margin-top: 20px; 
+            background-color: rgb(14, 5, 29); 
+            color: #ffffff; 
+        }
+        .container { 
+            max-width: 500px; 
+            margin: auto; 
+            padding: 20px; 
+            background: rgba(255, 255, 255, 0.05); 
+            border-radius: 10px; 
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        /* --- BUTTONS --- */
+        button { 
+            padding: 15px 20px; 
+            margin: 10px 0; 
+            cursor: pointer; 
+            font-size: 16px; 
+            font-weight: bold;
+            border-radius: 5px; 
+            border: none; 
+            background-color: rgb(231, 43, 85); 
+            color: white; 
+            width: 100%;
+        }
+        button:hover, button:active {
+            background-color: rgb(200, 30, 70); 
+            transform: scale(0.98); /* Adds a subtle "press" effect */
+        }
+        
+        /* --- INPUT FIELDS --- */
+        input { 
+            width: 90%; 
+            padding: 10px; 
+            margin: 10px 0; 
+            background-color: rgb(25, 15, 45); 
+            color: white;
+            border: 1px solid rgb(231, 43, 85); 
+            border-radius: 5px; 
+            font-size: 16px; 
+            outline: none;
+        }
+        input::placeholder {
+            color: #aaaaaa;
+        }
+        
+        /* Changes background when clicked/focused */
+        input:focus {
+            background-color: rgb(45, 25, 75);
+            box-shadow: 0 0 8px rgba(231, 43, 85, 0.5);
+        }
+
+        /* Changes background after text is typed and it's no longer empty */
+        input:not(:placeholder-shown) {
+            background-color: rgb(45, 25, 75); 
+        }
+
+        .event-logo {
+            max-width: 150px; 
+            margin-bottom: 10px;
+        }
+        
+        /* --- SCANNER & MESSAGES --- */
+        #reader { width: 100%; margin-top: 20px; background-color: #ffffff; border-radius: 5px; overflow: hidden; }
+        #message, #login-message { font-weight: bold; font-size: 1.2em; margin-top: 20px; padding: 10px; border-radius: 5px;}
+        .success { color: #155724; background-color: #d4edda; border: 1px solid #c3e6cb; }
+        .error { color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; }
         
         /* Toggle views */
-        #scanner-section, #login-section { display: none; }
-        .active { display: block !important; }
+        #scanner-section, #login-section { display: none; opacity: 0; }
+        .active { display: block !important; opacity: 1 !important; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h2>Gate Check-In</h2>
+        
+        <img src="logo.png" alt="Event Logo" class="event-logo">
+        
+        <h2>সাকেপ কাউকে QR ছাড়া ঢুকতে দেয় না</h2>
 
         <div id="login-section" class="active">
-            <h3>Guard Login</h3>
+            <h3>Gate Slave Login</h3>
             <input type="text" id="username" placeholder="Username (e.g. Gate1)">
             <input type="password" id="pin" placeholder="PIN">
             <button onclick="login()">Login</button>
@@ -34,7 +107,7 @@
         </div>
 
         <div id="scanner-section">
-            <button onclick="logout()" style="background: #dc3545; padding: 5px; width: auto; float: right; font-size: 12px;">Logout</button>
+            <button onclick="logout()" style="background: transparent; border: 1px solid rgb(231, 43, 85); color: rgb(231, 43, 85); padding: 5px 15px; width: auto; float: right; font-size: 14px;">Logout</button>
             <div style="clear: both;"></div>
             <div id="reader"></div>
             <div id="message"></div>
@@ -47,14 +120,12 @@
         const GOOGLE_API_URL = 'https://script.google.com/macros/s/AKfycbyCYq1cJiVS_fQ7jyz32oA-sAwIQCkAO96E_7SDFe_w6ZDz2sfQPlMmNTJhasCXVpgWWQ/exec';
         let html5QrcodeScanner;
 
-        // Check if already logged in when page loads
         window.onload = () => {
             if (localStorage.getItem('guardLoggedIn') === 'true') {
                 showScanner();
             }
         };
 
-        // --- LOGIN LOGIC ---
         async function login() {
             const username = document.getElementById('username').value;
             const pin = document.getElementById('pin').value;
@@ -89,17 +160,35 @@
         function logout() {
             localStorage.removeItem('guardLoggedIn');
             stopScanner();
-            document.getElementById('scanner-section').classList.remove('active');
-            document.getElementById('login-section').classList.add('active');
+            
+            const scannerSec = document.getElementById('scanner-section');
+            const loginSec = document.getElementById('login-section');
+            
+            scannerSec.style.opacity = 0;
+            setTimeout(() => {
+                scannerSec.classList.remove('active');
+                loginSec.classList.add('active');
+                setTimeout(() => loginSec.style.opacity = 1, 50);
+            }, 300);
+
             document.getElementById('login-message').innerText = "";
+            document.getElementById('login-message').className = "";
+            document.getElementById('username').value = "";
+            document.getElementById('pin').value = "";
         }
 
         function showScanner() {
-            document.getElementById('login-section').classList.remove('active');
-            document.getElementById('scanner-section').classList.add('active');
+            const scannerSec = document.getElementById('scanner-section');
+            const loginSec = document.getElementById('login-section');
+            
+            loginSec.style.opacity = 0;
+            setTimeout(() => {
+                loginSec.classList.remove('active');
+                scannerSec.classList.add('active');
+                setTimeout(() => scannerSec.style.opacity = 1, 50);
+            }, 300);
         }
 
-        // --- SCANNER LOGIC ---
         function startScanner() {
             document.getElementById('message').innerText = "";
             document.getElementById('message').className = "";
