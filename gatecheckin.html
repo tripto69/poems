@@ -93,7 +93,7 @@
                 <button onclick="handleManualSearch()">Search</button>
             </div>
 
-            <div id="loader">Communicating with Database...</div>
+            <div id="loader">Communicating with NocoDB...</div>
 
             <div id="reader"></div>
             <button id="scanBtn" onclick="startScanner()" style="margin-top: 15px;">Open Camera</button>
@@ -129,12 +129,20 @@
 
     <script>
         // =========================================================
-        // 1. PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL HERE
+        // 1. NOCODB CONFIGURATION - PASTE YOUR DETAILS HERE
         // =========================================================
-        const BACKEND_URL = "https://script.google.com/macros/s/AKfycbwOKwom1u44BA9HoQ5xtLtm2Iu9_CMxUZgWa-Dxp7POjJcCN8sK37yTcIlyVosildl0sA/exec"; 
+        const NOCODB_CONFIG = {
+            baseURL: "https://data.nmf.ndmcbd.org/", 
+            token: "DdyZZBFJv9lBmhKcJYMdos3YHR7wAX17NWiP4BKx",
+            tables: {
+                participants: "mwpiygbw123apil",
+                th_participants: "mgvp5u3p6ix6oz8",
+                th_teams: "mdd0p2yurodsdww"
+            }
+        };
 
         let html5QrcodeScanner;
-        let pendingCheckInId = ""; // Stores the ID while waiting for guard confirmation
+        let pendingCheckIn = { tableId: "", recordId: null }; 
 
         window.onload = () => {
             if (localStorage.getItem('guardLoggedIn') === 'true') {
@@ -147,7 +155,7 @@
             const pass = document.getElementById('pin').value.trim();
             const msgEl = document.getElementById('login-message');
 
-            const validGuards = { "admin_tripto": "12608061", "gate1": "mathfest2026", "admin_maher": "1234maher" };
+            const validGuards = { "admin": "1234", "gate1": "mathfest2026", "gate2": "mathfest2026" };
 
             if (validGuards[user] && validGuards[user] === pass) {
                 localStorage.setItem('guardLoggedIn', 'true');
@@ -170,7 +178,18 @@
             setTimeout(() => { document.getElementById('scanner-section').style.opacity = 1; }, 50);
         }
 
-        // --- STEP 1: VERIFY ---
+        // --- NOCODB API HELPER ---
+        async function fetchFromNocoDB(tableId, whereQuery) {
+            const url = `${NOCODB_CONFIG.baseURL}/${tableId}/records?where=${encodeURIComponent(whereQuery)}&limit=1`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'xc-token': NOCODB_CONFIG.token, 'Content-Type': 'application/json' }
+            });
+            const data = await response.json();
+            return data.list && data.list.length > 0 ? data.list[0] : null;
+        }
+
+        // --- STEP 1: VERIFY VIA NOCODB ---
         async function processScan(queryText, type = 'auto') {
             queryText = queryText.trim();
             if (!queryText) return;
@@ -179,21 +198,92 @@
             document.getElementById('loader').style.display = "block";
             
             try {
-                const response = await fetch(BACKEND_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    // Send action: 'search' to prevent auto check-in
-                    body: JSON.stringify({ action: 'search', query: queryText, searchType: type }), 
-                    redirect: "follow"
-                });
-                
-                const result = await response.json();
+                // Format the NocoDB 'where' clause based on search type
+                let whereQuery = "";
+                if (type === "auto") {
+                    whereQuery = `(nmf_id,eq,${queryText})~or(phone,eq,${queryText})`;
+                } else {
+                    whereQuery = `(${type},eq,${queryText})`;
+                }
+
+                // 1. Check Main Event Table
+                let record = await fetchFromNocoDB(NOCODB_CONFIG.tables.participants, whereQuery);
+                let isTreasureHunt = false;
+                let activeTableId = NOCODB_CONFIG.tables.participants;
+
+                // 2. If not found, check Treasure Hunt Table
+                if (!record) {
+                    record = await fetchFromNocoDB(NOCODB_CONFIG.tables.th_participants, whereQuery);
+                    if (record) {
+                        isTreasureHunt = true;
+                        activeTableId = NOCODB_CONFIG.tables.th_participants;
+                    }
+                }
+
                 document.getElementById('loader').style.display = "none";
-                showModal(result);
+
+                if (!record) {
+                    return showModal({ success: false, canCheckIn: false, message: "Participant not found." });
+                }
+
+                // Gather details
+                const payment = (record.payment_status || "unpaid").toLowerCase();
+                const isAlreadyIn = (record.checked_in === true || record.checked_in === 1 || String(record.checked_in).toLowerCase() === "true");
+                
+                let detailsObj = {
+                    name: record.full_name || "N/A",
+                    id: record.nmf_id || "N/A",
+                    institution: record.institution || "N/A",
+                    type: isTreasureHunt ? "Treasure Hunt" : "Main Event",
+                    teamName: "N/A",
+                    teamMembers: "None listed"
+                };
+
+                // TH Specific: Fetch Team Data
+                let teamStatus = "approved"; // Default for main event
+                if (isTreasureHunt && record.team_id) {
+                    const teamQuery = `(id,eq,${record.team_id})`;
+                    const teamRecord = await fetchFromNocoDB(NOCODB_CONFIG.tables.th_teams, teamQuery);
+                    
+                    if (teamRecord) {
+                        detailsObj.teamName = teamRecord.team_name || "N/A";
+                        teamStatus = (teamRecord.status || "pending").toLowerCase();
+                        
+                        if (teamRecord.members_json) {
+                            try {
+                                const parsed = JSON.parse(teamRecord.members_json);
+                                if (Array.isArray(parsed)) {
+                                    detailsObj.teamMembers = parsed.map(m => m.name || m).join(", ");
+                                } else {
+                                    detailsObj.teamMembers = teamRecord.members_json;
+                                }
+                            } catch(e) { detailsObj.teamMembers = teamRecord.members_json; }
+                        }
+                    }
+                }
+
+                // Logic Checks (Paid OR Approved)
+                const isIndivCleared = (payment === "paid" || payment === "approved");
+                const isTeamCleared = (teamStatus === "approved" || teamStatus === "paid");
+
+                if (!isIndivCleared) {
+                    return showModal({ success: false, canCheckIn: false, message: `DENIED: INDIVIDUAL ${payment.toUpperCase()}`, details: detailsObj });
+                }
+                if (isTreasureHunt && !isTeamCleared) {
+                    return showModal({ success: false, canCheckIn: false, message: `DENIED: TEAM ${teamStatus.toUpperCase()}`, details: detailsObj });
+                }
+                if (isAlreadyIn) {
+                    return showModal({ success: false, canCheckIn: false, message: "ALREADY CHECKED IN!", details: detailsObj });
+                }
+
+                // All clear! Save the memory for the Check-In button
+                pendingCheckIn = { tableId: activeTableId, recordId: record.id };
+                showModal({ success: true, canCheckIn: true, message: "VERIFIED. AWAITING ENTRY.", details: detailsObj });
 
             } catch (error) {
+                console.error(error);
                 document.getElementById('loader').style.display = "none";
-                showModal({ success: false, canCheckIn: false, message: "Network Error." });
+                showModal({ success: false, canCheckIn: false, message: "Network Error hitting NocoDB." });
             }
             
             document.getElementById('manualSearch').value = "";
@@ -207,7 +297,6 @@
             const thDetails = document.getElementById('th-details');
             const actionContainer = document.getElementById('action-container');
             
-            // Set Box Color based on status
             if (result.success && result.canCheckIn) box.className = "modal-content status-verified";
             else if (result.success) box.className = "modal-content status-success";
             else box.className = "modal-content status-error";
@@ -216,9 +305,9 @@
 
             if (result.details) {
                 detailsDiv.style.display = "block";
-                document.getElementById('m-name').innerText = result.details.name || "N/A";
-                document.getElementById('m-id').innerText = result.details.id || "N/A";
-                document.getElementById('m-inst').innerText = result.details.institution || "N/A";
+                document.getElementById('m-name').innerText = result.details.name;
+                document.getElementById('m-id').innerText = result.details.id;
+                document.getElementById('m-inst').innerText = result.details.institution;
                 
                 const typeSpan = document.getElementById('m-type');
                 if (result.details.type) {
@@ -240,12 +329,10 @@
                 document.getElementById('modalMsg').innerText = "";
             } else {
                 detailsDiv.style.display = "none";
-                document.getElementById('modalMsg').innerText = "Participant not found.";
+                document.getElementById('modalMsg').innerText = "Double check details.";
             }
 
-            // Generate Action Buttons Dynamically
             if (result.canCheckIn) {
-                pendingCheckInId = result.details.id;
                 actionContainer.innerHTML = `
                     <div class="action-buttons">
                         <button class="success-btn" onclick="confirmCheckIn()" id="permitBtn">Permit Entry</button>
@@ -259,24 +346,22 @@
             modal.style.display = "flex";
         }
 
-        // --- STEP 3: CONFIRM ENTRY ---
+        // --- STEP 3: PATCH TO NOCODB ---
         async function confirmCheckIn() {
             const permitBtn = document.getElementById('permitBtn');
             permitBtn.innerText = "Confirming...";
             permitBtn.disabled = true;
 
             try {
-                const response = await fetch(BACKEND_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    // Send action: 'checkin' with the exact NMF_ID
-                    body: JSON.stringify({ action: 'checkin', query: pendingCheckInId }), 
-                    redirect: "follow"
+                const url = `${NOCODB_CONFIG.baseURL}/${pendingCheckIn.tableId}/records`;
+                const response = await fetch(url, {
+                    method: 'PATCH',
+                    headers: { 'xc-token': NOCODB_CONFIG.token, 'Content-Type': 'application/json' },
+                    // NocoDB PATCH requires the primary key (id) and the fields to update
+                    body: JSON.stringify({ id: pendingCheckIn.recordId, checked_in: true })
                 });
                 
-                const result = await response.json();
-                
-                if (result.success) {
+                if (response.ok) {
                     document.getElementById('modalTitle').innerText = "ENTRY CONFIRMED!";
                     document.getElementById('modalBox').className = "modal-content status-success";
                     document.getElementById('action-container').innerHTML = `<button onclick="closeModal()" style="margin-top: 20px;">Close & Next Scan</button>`;
@@ -294,7 +379,7 @@
 
         function closeModal() {
             document.getElementById('resultModal').style.display = "none";
-            pendingCheckInId = ""; // Reset memory
+            pendingCheckIn = { tableId: "", recordId: null }; 
         }
 
         function handleManualSearch() {
@@ -335,12 +420,7 @@
                 const decodedText = await tempScanner.scanFile(file, true);
                 await processScan(decodedText, 'auto');
             } catch (err) {
-                document.getElementById('modalTitle').innerText = "ERROR";
-                document.getElementById('modalMsg').innerText = "No QR code detected.";
-                document.getElementById('modalBox').className = "modal-content status-error";
-                document.getElementById('resultModal').style.display = "flex";
-                document.getElementById('participantDetails').style.display = "none";
-                document.getElementById('action-container').innerHTML = `<button onclick="closeModal()">Close</button>`;
+                showModal({ success: false, message: "No QR code detected in the image." });
             }
             event.target.value = ''; 
         }
